@@ -29,8 +29,11 @@ class SongService {
         final List data = jsonDecode(response.body);
         return data.map((j) => LibrarySong.fromJson(j)).toList();
       }
+      print("Error en getLibrary (Status ${response.statusCode}): ${response.body}");
       return [];
-    } catch (e) {
+    } catch (e, stack) {
+      print("Excepción en getLibrary: $e");
+      print(stack);
       return [];
     }
   }
@@ -49,6 +52,7 @@ class SongService {
       }
       return null;
     } catch (e) {
+      print("Excepción en getPlayUrl: $e");
       return null;
     }
   }
@@ -67,6 +71,7 @@ class SongService {
       }
       return null;
     } catch (e) {
+      print("Excepción en getThumbnailUrl: $e");
       return null;
     }
   }
@@ -82,6 +87,7 @@ class SongService {
 
       return response.statusCode == 204 || response.statusCode == 200;
     } catch (e) {
+      print("Excepción en deleteSong: $e");
       return false;
     }
   }
@@ -98,6 +104,7 @@ class SongService {
 
       return response.statusCode == 200;
     } catch (e) {
+      print("Excepción en togglePublic: $e");
       return false;
     }
   }

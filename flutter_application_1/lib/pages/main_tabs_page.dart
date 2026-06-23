@@ -4,7 +4,8 @@ import 'package:flutter_application_1/models/song.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/song_service.dart';
 import 'package:flutter_application_1/services/community_service.dart';
-
+import 'package:flutter_application_1/pages/community_tab.dart';
+import 'package:flutter_application_1/models/community_models.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTA: Este archivo reemplaza DashboardPage.
 // En tu router cambia '/' o '/dashboard' para que apunte a MainTabsPage.
@@ -23,7 +24,7 @@ class _MainTabsPageState extends State<MainTabsPage>
 
   // ── Player compartido ──────────────────────────────────────────────────────
   final AudioPlayer _player = AudioPlayer();
-  ActiveTrack? _activeTrack; // canción activa (lib o comunidad)
+  ActiveTrack? _activeTrack;
   bool _isPlaying = false;
   bool _loadingPlay = false;
   Duration _position = Duration.zero;
@@ -35,10 +36,8 @@ class _MainTabsPageState extends State<MainTabsPage>
     _tab = TabController(length: 2, vsync: this);
     _player.onPlayerStateChanged
         .listen((s) => setState(() => _isPlaying = s == PlayerState.playing));
-    _player.onPositionChanged
-        .listen((p) => setState(() => _position = p));
-    _player.onDurationChanged
-        .listen((d) => setState(() => _duration = d));
+    _player.onPositionChanged.listen((p) => setState(() => _position = p));
+    _player.onDurationChanged.listen((d) => setState(() => _duration = d));
   }
 
   @override
@@ -106,9 +105,10 @@ class _MainTabsPageState extends State<MainTabsPage>
                     onPlay: playTrack,
                   ),
                   CommunityTab(
-                    activeTrack: _activeTrack,
+                    activeTrackId: _activeTrack?.id,
                     isPlaying: _isPlaying,
-                    onPlay: playTrack,
+                    onPlay: (song) =>
+                        playTrack(ActiveTrack.fromCommunity(song)),
                   ),
                 ],
               ),
@@ -155,36 +155,37 @@ class _TopBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: Column(
         children: [
-      Row(
-        children: [
-      IconButton(
-        onPressed: onLogout,
-        icon: const Icon(Icons.exit_to_app, color: Color.fromARGB(255, 125, 9, 220), size: 28),
-        tooltip: 'Cerrar sesión',
-      ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TabBar(
-              controller: tabController,
-              indicator: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
+          Row(
+            children: [
+              IconButton(
+                onPressed: onLogout,
+                icon: const Icon(Icons.exit_to_app,
+                    color: Color.fromARGB(255, 125, 9, 220), size: 28),
+                tooltip: 'Cerrar sesión',
               ),
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              labelColor: Colors.black,
-              unselectedLabelColor: Colors.grey[500],
-              labelStyle: const TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 14),
-              padding: EdgeInsets.zero,
-              tabs: const [
-                Tab(text: 'Mi biblioteca'),
-                Tab(text: 'Comunidad'),
-              ],
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TabBar(
+                  controller: tabController,
+                  indicator: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  labelColor: Colors.black,
+                  unselectedLabelColor: Colors.grey[500],
+                  labelStyle: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14),
+                  padding: EdgeInsets.zero,
+                  tabs: const [
+                    Tab(text: 'Mi biblioteca'),
+                    Tab(text: 'Comunidad'),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
           const SizedBox(height: 4),
         ],
       ),
@@ -295,8 +296,8 @@ class _LibraryTabState extends State<LibraryTab>
     try {
       final d = DateTime.parse(iso);
       const m = [
-        'ene','feb','mar','abr','may','jun',
-        'jul','ago','sep','oct','nov','dic'
+        'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+        'jul', 'ago', 'sep', 'oct', 'nov', 'dic'
       ];
       return '${d.day} ${m[d.month - 1]} ${d.year}';
     } catch (_) {
@@ -309,7 +310,6 @@ class _LibraryTabState extends State<LibraryTab>
     super.build(context);
     return CustomScrollView(
       slivers: [
-        // Cabecera
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
@@ -321,12 +321,10 @@ class _LibraryTabState extends State<LibraryTab>
             ),
           ),
         ),
-        // Error
         if (_error != null)
           SliverToBoxAdapter(
             child: _ErrorBanner(message: _error!),
           ),
-        // Controles búsqueda / orden
         if (!_loading && _songs.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
@@ -345,14 +343,11 @@ class _LibraryTabState extends State<LibraryTab>
               ),
             ),
           ),
-        // Grid
         if (_loading)
           SliverToBoxAdapter(child: _SkeletonGrid())
         else if (_filtered.isEmpty)
           SliverToBoxAdapter(
-            child: _EmptyState(
-              hasSearch: _search.isNotEmpty,
-            ),
+            child: _EmptyState(hasSearch: _search.isNotEmpty),
           )
         else
           SliverPadding(
@@ -371,8 +366,7 @@ class _LibraryTabState extends State<LibraryTab>
                     onPlay: () => widget.onPlay(ActiveTrack.fromLibrary(song)),
                     onDelete: () => _deleteSong(song),
                     onPublish: (val) async {
-                      final ok =
-                          await SongService.togglePublic(song.id, val);
+                      final ok = await SongService.togglePublic(song.id, val);
                       if (ok && mounted) {
                         setState(() => song.isPublic = val);
                       }
@@ -381,8 +375,7 @@ class _LibraryTabState extends State<LibraryTab>
                 },
                 childCount: _filtered.length,
               ),
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 childAspectRatio: 0.62,
                 crossAxisSpacing: 12,
@@ -397,250 +390,7 @@ class _LibraryTabState extends State<LibraryTab>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 2 — COMUNIDAD
-// ─────────────────────────────────────────────────────────────────────────────
-
-class CommunityTab extends StatefulWidget {
-  final ActiveTrack? activeTrack;
-  final bool isPlaying;
-  final Future<void> Function(ActiveTrack) onPlay;
-
-  const CommunityTab({
-    super.key,
-    required this.activeTrack,
-    required this.isPlaying,
-    required this.onPlay,
-  });
-
-  @override
-  State<CommunityTab> createState() => _CommunityTabState();
-}
-
-class _CommunityTabState extends State<CommunityTab>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  static const _tags = [
-    'Todos','Trending','reggaeton','lofi','techno','pop','rock','electronic'
-  ];
-
-  List<CommunitySongModel> _songs = [];
-  CommunityStatsModel? _stats;
-  bool _loading = true;
-  bool _loadingMore = false;
-  int _page = 1;
-  bool _hasNext = false;
-  String _search = '';
-  String _activeTag = 'Todos';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFeed(1, 'Todos', '');
-    _loadStats();
-  }
-
-  Future<void> _loadStats() async {
-    final s = await CommunityService.getStats();
-    if (mounted && s != null) setState(() => _stats = s);
-  }
-
-  Future<void> _loadFeed(int page, String tag, String q,
-      {bool append = false}) async {
-    if (page == 1) {
-      setState(() => _loading = true);
-    } else {
-      setState(() => _loadingMore = true);
-    }
-    final tagParam =
-        (tag == 'Todos' || tag == 'Trending') ? '' : tag;
-    final res =
-        await CommunityService.getFeed(page: page, tag: tagParam, search: q);
-    if (mounted && res != null) {
-      setState(() {
-        _songs = append ? [..._songs, ...res.results] : res.results;
-        _hasNext = res.hasNext;
-        _page = page;
-        _loading = false;
-        _loadingMore = false;
-      });
-    } else if (mounted) {
-      setState(() {
-        _loading = false;
-        _loadingMore = false;
-      });
-    }
-  }
-
-  void _changeTag(String tag) {
-    setState(() => _activeTag = tag);
-    _loadFeed(1, tag, _search);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    return CustomScrollView(
-      slivers: [
-        // Stats
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: _StatsRow(stats: _stats),
-          ),
-        ),
-        // Búsqueda + filtros
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            child: Column(
-              children: [
-                _SearchField(
-                  hint: 'Buscar canciones o creadores...',
-                  onChanged: (v) {
-                    setState(() => _search = v);
-                    _loadFeed(1, _activeTag, v);
-                  },
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 36,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _tags.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (_, i) {
-                      final t = _tags[i];
-                      final active = _activeTag == t;
-                      return GestureDetector(
-                        onTap: () => _changeTag(t),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            gradient: active
-                                ? const LinearGradient(
-                                    colors: [
-                                      Color(0xFFA855F7),
-                                      Color(0xFF7C3AED)
-                                    ],
-                                  )
-                                : null,
-                            color: active
-                                ? null
-                                : const Color(0xFF121212),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                                color: active
-                                    ? Colors.transparent
-                                    : const Color(0xFF232323)),
-                          ),
-                          child: Text(
-                            t,
-                            style: TextStyle(
-                              color: active
-                                  ? Colors.white
-                                  : Colors.grey[500],
-                              fontSize: 13,
-                              fontWeight: active
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        // Canciones
-        if (_loading)
-          SliverToBoxAdapter(child: _SkeletonGrid())
-        else if (_songs.isEmpty)
-          SliverToBoxAdapter(
-            child: _EmptyState(
-              hasSearch: _search.isNotEmpty,
-              emptyLabel: 'No se encontraron canciones',
-              emptyHint: 'Prueba con otro término o filtro.',
-            ),
-          )
-        else
-          SliverPadding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20).copyWith(bottom: 20),
-            sliver: SliverGrid(
-              delegate: SliverChildBuilderDelegate(
-                (_, i) {
-                  final song = _songs[i];
-                  final isActive = widget.activeTrack?.id == song.id;
-                  return _CommunitySongCard(
-                    song: song,
-                    isActive: isActive,
-                    isPlaying: isActive && widget.isPlaying,
-                    onPlay: () =>
-                        widget.onPlay(ActiveTrack.fromCommunity(song)),
-                    onLike: () async {
-                      final res =
-                          await CommunityService.toggleLike(song.id);
-                      if (res != null && mounted) {
-                        setState(() {
-                          song.isLiked = res.liked;
-                          song.likeCount = res.likeCount;
-                        });
-                      }
-                    },
-                  );
-                },
-                childCount: _songs.length,
-              ),
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.65,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-            ),
-          ),
-        // Cargar más
-        if (_hasNext)
-          SliverToBoxAdapter(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: TextButton(
-                  onPressed: _loadingMore
-                      ? null
-                      : () => _loadFeed(
-                            _page + 1,
-                            _activeTag,
-                            _search,
-                            append: true,
-                          ),
-                  child: _loadingMore
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Ver más',
-                          style: TextStyle(color: Colors.grey)),
-                ),
-              ),
-            ),
-          ),
-        const SliverToBoxAdapter(child: SizedBox(height: 100)),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CARDS
+// CARD DE BIBLIOTECA
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _LibrarySongCard extends StatefulWidget {
@@ -696,7 +446,6 @@ class _LibrarySongCardState extends State<_LibrarySongCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Portada
           Expanded(
             flex: 6,
             child: Stack(
@@ -781,7 +530,6 @@ class _LibrarySongCardState extends State<_LibrarySongCard> {
               ],
             ),
           ),
-          // Parte inferior
           Expanded(
             flex: 4,
             child: Padding(
@@ -791,8 +539,7 @@ class _LibrarySongCardState extends State<_LibrarySongCard> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(widget.formatDate(song.createdAt),
-                      style: TextStyle(
-                          color: Colors.grey[600], fontSize: 10)),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 10)),
                   GestureDetector(
                     onTap: () => widget.onPublish(!song.isPublic),
                     child: Container(
@@ -813,13 +560,10 @@ class _LibrarySongCardState extends State<_LibrarySongCard> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            song.isPublic
-                                ? Icons.public
-                                : Icons.upload,
+                            song.isPublic ? Icons.public : Icons.upload,
                             size: 10,
-                            color: song.isPublic
-                                ? Colors.green
-                                : Colors.grey[400],
+                            color:
+                                song.isPublic ? Colors.green : Colors.grey[400],
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -842,8 +586,7 @@ class _LibrarySongCardState extends State<_LibrarySongCard> {
                         child: GestureDetector(
                           onTap: widget.onPlay,
                           child: Container(
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 7),
+                            padding: const EdgeInsets.symmetric(vertical: 7),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(20),
@@ -896,296 +639,6 @@ class _LibrarySongCardState extends State<_LibrarySongCard> {
       );
 }
 
-// ── Community card ─────────────────────────────────────────────────────────
-
-class _CommunitySongCard extends StatefulWidget {
-  final CommunitySongModel song;
-  final bool isActive;
-  final bool isPlaying;
-  final VoidCallback onPlay;
-  final VoidCallback onLike;
-
-  const _CommunitySongCard({
-    required this.song,
-    required this.isActive,
-    required this.isPlaying,
-    required this.onPlay,
-    required this.onLike,
-  });
-
-  @override
-  State<_CommunitySongCard> createState() => _CommunitySongCardState();
-}
-
-class _CommunitySongCardState extends State<_CommunitySongCard> {
-  String? _thumbUrl;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.song.thumbnailS3Key != null) {
-      CommunityService.getThumbnailUrl(widget.song.id).then((url) {
-        if (mounted && url != null) setState(() => _thumbUrl = url);
-      });
-    }
-  }
-
-  String get _initials {
-    final name = widget.song.userName;
-    if (name.isEmpty) return '?';
-    return name
-        .split(' ')
-        .map((n) => n.isNotEmpty ? n[0] : '')
-        .join()
-        .substring(0, name.split(' ').length > 1 ? 2 : 1)
-        .toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final song = widget.song;
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF121212),
-        borderRadius: BorderRadius.circular(16),
-        border: widget.isActive
-            ? Border.all(color: const Color(0xFF7C3AED), width: 1.5)
-            : Border.all(color: const Color(0xFF1F1F1F)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Portada
-          Expanded(
-            flex: 6,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                _thumbUrl != null
-                    ? Image.network(_thumbUrl!, fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _thumb())
-                    : _thumb(),
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.85)
-                        ],
-                        stops: const [0.4, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-                // Tag principal
-                if (song.tags.isNotEmpty)
-                  Positioned(
-                    top: 10,
-                    left: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFA855F7), Color(0xFF7C3AED)],
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(song.tags.first,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                // Botón play
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: GestureDetector(
-                    onTap: widget.onPlay,
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: widget.isActive
-                            ? const Color(0xFF7C3AED)
-                            : Colors.white.withOpacity(0.9),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        widget.isPlaying ? Icons.pause : Icons.play_arrow,
-                        color:
-                            widget.isActive ? Colors.white : Colors.black,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-                // Título en la parte inferior de la imagen
-                Positioned(
-                  bottom: 10,
-                  left: 10,
-                  right: 10,
-                  child: Text(song.title,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
-                ),
-              ],
-            ),
-          ),
-          // Parte inferior
-          Expanded(
-            flex: 4,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Avatar + usuario
-                  Row(
-                    children: [
-                      Container(
-                        width: 22,
-                        height: 22,
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Color(0xFFA855F7),
-                              Color(0xFF7C3AED)
-                            ],
-                          ),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(_initials,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(song.userName,
-                            style: TextStyle(
-                                color: Colors.grey[400], fontSize: 11),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                      ),
-                    ],
-                  ),
-                  // Like + plays
-                  Row(
-                    children: [
-                      GestureDetector(
-                        onTap: widget.onLike,
-                        child: Row(
-                          children: [
-                            Icon(
-                              song.isLiked
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              size: 14,
-                              color: song.isLiked
-                                  ? Colors.red[400]
-                                  : Colors.grey[500],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _compactNumber(song.likeCount),
-                              style: TextStyle(
-                                  color: Colors.grey[500], fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Icon(Icons.play_circle_outline,
-                          size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        _compactNumber(song.playCount),
-                        style:
-                            TextStyle(color: Colors.grey[500], fontSize: 11),
-                      ),
-                    ],
-                  ),
-                  // Botón reproducir
-                  GestureDetector(
-                    onTap: widget.onPlay,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 7),
-                      decoration: BoxDecoration(
-                        color: widget.isActive
-                            ? const Color(0xFF7C3AED)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            widget.isPlaying
-                                ? Icons.pause
-                                : Icons.play_arrow,
-                            size: 13,
-                            color: widget.isActive
-                                ? Colors.white
-                                : Colors.black,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            widget.isPlaying ? 'Pausar' : 'Reproducir',
-                            style: TextStyle(
-                              color: widget.isActive
-                                  ? Colors.white
-                                  : Colors.black,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _compactNumber(int n) =>
-      n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}K' : '$n';
-
-  Widget _thumb() => Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF2d1b4e), Color(0xFF1a1035)],
-          ),
-        ),
-        child: const Center(
-          child: Icon(Icons.music_note,
-              color: Color(0xFFA855F7), size: 36),
-        ),
-      );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // MINI-PLAYER UNIFICADO
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1230,21 +683,19 @@ class _MiniPlayer extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Barra de progreso
           ClipRRect(
             borderRadius: BorderRadius.circular(2),
             child: LinearProgressIndicator(
               value: progress,
               backgroundColor: Colors.grey[800],
-              valueColor: const AlwaysStoppedAnimation<Color>(
-                  Color(0xFF7C3AED)),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(Color(0xFF7C3AED)),
               minHeight: 3,
             ),
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              // Thumbnail
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: track.thumbnailUrl != null
@@ -1253,12 +704,12 @@ class _MiniPlayer extends StatelessWidget {
                         width: 44,
                         height: 44,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _thumbFallback(track.source),
+                        errorBuilder: (_, __, ___) =>
+                            _thumbFallback(track.source),
                       )
                     : _thumbFallback(track.source),
               ),
               const SizedBox(width: 12),
-              // Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1304,13 +755,11 @@ class _MiniPlayer extends StatelessWidget {
                   ],
                 ),
               ),
-              // Tiempo
               Text(
                 '${_fmt(position)} / ${_fmt(duration)}',
                 style: TextStyle(color: Colors.grey[600], fontSize: 11),
               ),
               const SizedBox(width: 12),
-              // Play/Pause
               GestureDetector(
                 onTap: onPlayPause,
                 child: Container(
@@ -1330,11 +779,9 @@ class _MiniPlayer extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              // Cerrar
               GestureDetector(
                 onTap: onClose,
-                child: Icon(Icons.close,
-                    color: Colors.grey[600], size: 20),
+                child: Icon(Icons.close, color: Colors.grey[600], size: 20),
               ),
             ],
           ),
@@ -1362,7 +809,7 @@ class _MiniPlayer extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WIDGETS REUTILIZABLES
+// WIDGETS REUTILIZABLES (BIBLIOTECA)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SearchField extends StatelessWidget {
@@ -1387,13 +834,10 @@ class _SearchField extends StatelessWidget {
         onChanged: onChanged,
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle:
-              TextStyle(color: Colors.grey[600], fontSize: 14),
-          prefixIcon:
-              Icon(Icons.search, color: Colors.grey[600], size: 20),
+          hintStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
+          prefixIcon: Icon(Icons.search, color: Colors.grey[600], size: 20),
           border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(vertical: 14),
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
         ),
       ),
     );
@@ -1424,13 +868,12 @@ class _SortRow extends StatelessWidget {
     return GestureDetector(
       onTap: () => onChanged(value),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: active ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: active ? Colors.white : Colors.grey[700]!),
+          border:
+              Border.all(color: active ? Colors.white : Colors.grey[700]!),
         ),
         child: Text(label,
             style: TextStyle(
@@ -1438,56 +881,6 @@ class _SortRow extends StatelessWidget {
                 fontSize: 13,
                 fontWeight: FontWeight.w600)),
       ),
-    );
-  }
-}
-
-class _StatsRow extends StatelessWidget {
-  final CommunityStatsModel? stats;
-
-  const _StatsRow({this.stats});
-
-  @override
-  Widget build(BuildContext context) {
-    String playsStr = '…';
-    if (stats != null) {
-      playsStr = stats!.playsToday >= 1000
-          ? '${(stats!.playsToday / 1000).toStringAsFixed(1)}K'
-          : '${stats!.playsToday}';
-    }
-    final items = [
-      ('Canciones', stats?.publicSongs.toString() ?? '…'),
-      ('Usuarios', stats?.activeUsers.toString() ?? '…'),
-      ('Plays hoy', playsStr),
-    ];
-    return Row(
-      children: items.map((e) {
-        return Expanded(
-          child: Container(
-            margin: const EdgeInsets.only(right: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF121212),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF1F1F1F)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(e.$1,
-                    style: TextStyle(
-                        color: Colors.grey[500], fontSize: 10)),
-                const SizedBox(height: 4),
-                Text(e.$2,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900)), // ✅
-              ],
-            ),
-          ),
-        );
-      }).toList(),
     );
   }
 }
@@ -1540,9 +933,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             hasSearch ? 'Sin resultados' : emptyLabel,
             style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold),
+                color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
@@ -1575,8 +966,7 @@ class _ErrorBanner extends StatelessWidget {
           const Icon(Icons.error_outline, color: Colors.red, size: 18),
           const SizedBox(width: 10),
           Expanded(
-              child: Text(message,
-                  style: const TextStyle(color: Colors.red))),
+              child: Text(message, style: const TextStyle(color: Colors.red))),
         ],
       ),
     );
@@ -1584,7 +974,7 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODELOS LOCALES
+// MODELOS LOCALES (ActiveTrack, TrackSource)
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum TrackSource { library, community }
@@ -1593,9 +983,9 @@ enum TrackSource { library, community }
 class ActiveTrack {
   final String id;
   final String title;
-  final String? subtitle; // género o primer tag
+  final String? subtitle;
   final String? thumbnailUrl;
-  final String? url; // si ya se tiene la URL prefirmada
+  final String? url;
   final TrackSource source;
 
   const ActiveTrack({
@@ -1620,93 +1010,7 @@ class ActiveTrack {
         id: s.id,
         title: s.title,
         subtitle: s.tags.isNotEmpty ? s.tags.first : null,
-        thumbnailUrl: null, // se resuelve en tiempo de ejecución
+        thumbnailUrl: null,
         source: TrackSource.community,
       );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CommunityService — crea este archivo en services/community_service.dart
-// con la lógica que ya tienes en community.api.ts, pero en Dart.
-// A continuación se definen los modelos y el stub del servicio.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class CommunitySongModel {
-  final String id;
-  final String title;
-  final String? description;
-  final String? thumbnailS3Key;
-  final List<String> tags;
-  int playCount;
-  int likeCount;
-  final String userName;
-  bool isLiked;
-  final String createdAt;
-
-  CommunitySongModel({
-    required this.id,
-    required this.title,
-    this.description,
-    this.thumbnailS3Key,
-    required this.tags,
-    required this.playCount,
-    required this.likeCount,
-    required this.userName,
-    required this.isLiked,
-    required this.createdAt,
-  });
-
-  factory CommunitySongModel.fromJson(Map<String, dynamic> j) =>
-      CommunitySongModel(
-        id: j['id'] ?? '',
-        title: j['title'] ?? '',
-        description: j['description'],
-        thumbnailS3Key: j['thumbnail_s3_key'],
-        tags: (j['tags'] as List? ?? [])
-            .map((t) => (t['name'] ?? '') as String)
-            .toList(),
-        playCount: j['play_count'] ?? 0,
-        likeCount: j['like_count'] ?? 0,
-        userName: j['user_name'] ?? '',
-        isLiked: j['is_liked'] ?? false,
-        createdAt: j['created_at'] ?? '',
-      );
-}
-
-class CommunityFeedResult {
-  final List<CommunitySongModel> results;
-  final bool hasNext;
-
-  CommunityFeedResult({required this.results, required this.hasNext});
-}
-
-class CommunityStatsModel {
-  final int publicSongs;
-  final int activeUsers;
-  final int playsToday;
-
-  CommunityStatsModel({
-    required this.publicSongs,
-    required this.activeUsers,
-    required this.playsToday,
-  });
-
-  factory CommunityStatsModel.fromJson(Map<String, dynamic> j) =>
-      CommunityStatsModel(
-        publicSongs: j['public_songs'] ?? 0,
-        activeUsers: j['active_users'] ?? 0,
-        playsToday: j['plays_today'] ?? 0,
-      );
-}
-
-class LikeResult {
-  final bool liked;
-  final int likeCount;
-
-  LikeResult({required this.liked, required this.likeCount});
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STUB — reemplaza los métodos con tus llamadas HTTP reales
-// (igual que SongService pero para la comunidad)
-// ─────────────────────────────────────────────────────────────────────────────

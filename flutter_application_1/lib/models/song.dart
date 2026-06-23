@@ -13,7 +13,7 @@ class LibrarySong {
   final String? description;
   final String? genre;
   final String? mood;
-  final int? audioDuration;
+  final double? audioDuration; // Cambiado de int? a double?
   final String createdAt;
   final String? thumbnailUrl;
   final String? playUrl;
@@ -40,7 +40,8 @@ class LibrarySong {
         description: j['description'],
         genre: j['genre'],
         mood: j['mood'],
-        audioDuration: j['audio_duration'],
+        // Parsea de forma segura a double aceptando int o double desde el JSON
+        audioDuration: (j['audio_duration'] as num?)?.toDouble(),
         createdAt: j['created_at'] ?? '',
         thumbnailUrl: j['thumbnail_url'],
         playUrl: j['play_url'],

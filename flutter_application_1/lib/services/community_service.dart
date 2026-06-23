@@ -3,10 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_application_1/config/app_config.dart';
 
-// Importa los modelos desde main_tabs_page.dart (o muévelos a un archivo
-// separado models/community_song.dart si prefieres más orden).
-import 'package:flutter_application_1/pages/main_tabs_page.dart'
-    show CommunitySongModel, CommunityFeedResult, CommunityStatsModel, LikeResult;
+import 'package:flutter_application_1/models/community_models.dart';
 
 class CommunityService {
   static const _storage = FlutterSecureStorage();
